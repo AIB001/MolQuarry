@@ -90,6 +90,8 @@ def test_mcp_stdio_handshake_discovery_and_structured_error(tmp_path):
                     "collect_target_evidence",
                     "build_target_bundle",
                     "import_af3_results",
+                    "screen_compound_sourcing",
+                    "export_target_inventory",
                 }
                 reply = await session.call_tool("list_sources", {})
                 assert not reply.isError and len(reply.structuredContent["sources"]) == 41
@@ -160,6 +162,20 @@ def test_mcp_stdio_handshake_discovery_and_structured_error(tmp_path):
                     (
                         "import_af3_results",
                         {"archive_relative_path": "../archive.zip", "output_relative_path": "af3"},
+                    ),
+                    (
+                        "screen_compound_sourcing",
+                        {
+                            "input_relative_path": "../shortlist.sdf",
+                            "output_relative_path": "screen",
+                        },
+                    ),
+                    (
+                        "export_target_inventory",
+                        {
+                            "dossier_relative_path": "../dossier.json",
+                            "output_relative_path": "table",
+                        },
                     ),
                 ]:
                     failure = await session.call_tool(tool, parameters)

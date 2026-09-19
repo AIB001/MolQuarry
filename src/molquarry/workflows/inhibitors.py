@@ -20,11 +20,11 @@ PMID = Annotated[str, Field(pattern=r"^[1-9][0-9]{0,9}$")]
 class InhibitorSearch(InputModel):
     targets: list[TargetName] = Field(min_length=1, max_length=5)
     taxon: int = Field(default=9606, ge=1)
-    mode: Literal["inhibitor", "agonist", "modulator"] = "inhibitor"
+    mode: Literal["inhibitor", "agonist", "modulator", "ligand"] = "inhibitor"
     literature_until: str = Field(default_factory=lambda: date.today().isoformat())
     aliases: dict[str, list[str]] = Field(default_factory=dict)
     max_pages: int = Field(default=10, ge=1, le=100)
-    max_details: int = Field(default=60, ge=0, le=500)
+    max_details: int = Field(default=60, ge=0, le=5000)
     review_pmids: list[PMID] = Field(default_factory=list, max_length=100)
     max_fulltexts: int = Field(default=8, ge=0, le=100)
     search_assay_descriptions: bool = True
@@ -60,13 +60,19 @@ def literature_queries(targets, until, mode="inhibitor"):
         terms[target["input"]] = (
             "(" + " OR ".join("TITLE_ABS:" + literal(a) for a in aliases if a) + ")"
         )
+    cutoff = f"FIRST_PDATE:[1900-01-01 TO {until}]"
+    if mode == "ligand":
+        # Broad ligand discovery must not exclude binding/probe papers lacking inhibition terms.
+        result = {key: f"{term} AND {cutoff}" for key, term in terms.items()}
+        if len(terms) > 1:
+            result["interaction"] = " AND ".join([*terms.values(), cutoff])
+        return result
     vocab = {
         "inhibitor": ["inhibit*", "disrupt*", "antagonist*"],
         "agonist": ["agonist*", "activat*", '"positive allosteric modulator"'],
         "modulator": ["inhibit*", "disrupt*", "antagonist*", "agonist*", "activat*", "modulat*"],
     }
     inhibition = "(" + " OR ".join("TITLE_ABS:" + word for word in vocab[mode]) + ")"
-    cutoff = f"FIRST_PDATE:[1900-01-01 TO {until}]"
     result = {key: f"{term} AND {inhibition} AND {cutoff}" for key, term in terms.items()}
     if len(terms) > 1:
         # Co-mention search adds PPI/complex evidence without assuming all hits are PPI inhibitors.
@@ -291,9 +297,17 @@ def collect_inhibitor_evidence(quarry, config: InhibitorSearch, output_dir, *, p
             }
         )
         details[op] = []
-        for identifier in collector.limited(f"{op}-details", identifiers, config.max_details):
+        selected = collector.limited(f"{op}-details", identifiers, config.max_details)
+        for start in range(0, len(selected), 50):
             details[op].extend(
-                collector.query(f"{op}:{identifier}", "chembl", op, chembl_id=identifier)
+                collector.query(
+                    f"{op}-batch:{start // 50 + 1}",
+                    "chembl",
+                    "batch_details",
+                    entity=op,
+                    chembl_ids=selected[start : start + 50],
+                    limit=100,
+                )
             )
 
     entries, polymers, nonpolymers, ligands = [], [], [], []

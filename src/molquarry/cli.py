@@ -48,7 +48,32 @@ def build_parser():
     )
     inhibitors.add_argument("--max-pages", type=int, default=None)
     inhibitors.add_argument("--max-details", type=int, default=None)
-    inhibitors.add_argument("--mode", choices=["inhibitor", "agonist", "modulator"])
+    inhibitors.add_argument("--mode", choices=["inhibitor", "agonist", "modulator", "ligand"])
+    sourcing = sub.add_parser(
+        "source-sdf", help="Check SDF identities, catalogs and synthesis evidence"
+    )
+    sourcing.add_argument("input_sdf", type=Path)
+    sourcing.add_argument("--output-dir", type=Path)
+    sourcing.add_argument("--max-mcule-queries", type=int, default=20)
+    sourcing.add_argument("--workers", type=int, default=4)
+    sourcing.add_argument("--local-catalog", type=str, action="append", default=[])
+    sourcing.add_argument("--resume", action="store_true")
+    sourcing.add_argument("--retry-errors", action="store_true")
+    sourcing.add_argument("--no-unichem", action="store_true")
+    inventory = sub.add_parser(
+        "ligand-table", help="Export every collected compound and measurement"
+    )
+    inventory.add_argument("dossier", type=Path)
+    inventory.add_argument("--output-dir", type=Path, required=True)
+    inventory.add_argument("--sourcing", type=Path)
+    inventory.add_argument("--highlights", type=Path)
+    inventory.add_argument("--conformers", type=Path, help="Optional computed 3D index.json")
+    conformers = sub.add_parser(
+        "inventory-3d", help="Generate labeled 3D conformers for an inventory"
+    )
+    conformers.add_argument("inventory", type=Path)
+    conformers.add_argument("--output-dir", type=Path, required=True)
+    conformers.add_argument("--workers", type=int, default=2)
     bundle = sub.add_parser(
         "bundle", help="Export organized PDB/alignment, Excel, SDF and AF3 job files"
     )
@@ -171,6 +196,42 @@ def main(argv=None):
                 dossier = json.loads(args.dossier.read_text(encoding="utf-8"))
                 curation = Curation.model_validate_json(args.curation.read_text(encoding="utf-8"))
                 result = integrate_review(dossier, curation)
+            elif args.command == "ligand-table":
+                from .workflows.ligands import export_ligand_inventory
+
+                result = export_ligand_inventory(
+                    args.dossier,
+                    args.output_dir,
+                    sourcing_path=args.sourcing,
+                    highlights=json.loads(args.highlights.read_text()) if args.highlights else None,
+                    conformer_index_path=args.conformers,
+                )
+            elif args.command == "inventory-3d":
+                from .workflows.conformers import export_inventory_conformers
+
+                result = export_inventory_conformers(
+                    args.inventory,
+                    args.output_dir,
+                    workers=args.workers,
+                    progress=lambda message: print(message, file=sys.stderr),
+                )
+            elif args.command == "source-sdf":
+                from .workflows.sourcing import SourcingConfig, screen_sdf
+
+                result = screen_sdf(
+                    quarry,
+                    args.input_sdf,
+                    args.output_dir,
+                    config=SourcingConfig(
+                        workers=args.workers,
+                        max_mcule_queries=args.max_mcule_queries,
+                        unichem=not args.no_unichem,
+                        local_catalogs=args.local_catalog,
+                    ),
+                    resume=args.resume,
+                    retry_errors=args.retry_errors,
+                    progress=lambda message: print(message, file=sys.stderr),
+                )
             elif args.command == "bundle":
                 from .workflows.bundle import build_target_bundle
 

@@ -28,6 +28,16 @@ class AssayInput(InputModel):
     aid: int = Field(gt=0)
 
 
+class CIDInput(InputModel):
+    cid: int = Field(gt=0)
+
+
+class BatchProperties(InputModel):
+    inchikeys: list[Annotated[str, Field(pattern=r"^[A-Z]{14}-[A-Z]{10}-[A-Z]$")]] = Field(
+        min_length=1, max_length=100
+    )
+
+
 class SDFInput(InputModel):
     cids: list[Annotated[int, Field(gt=0)]] = Field(min_length=1, max_length=100)
     record_type: Literal["2d", "3d"] = "2d"
@@ -37,6 +47,18 @@ class PubChem(Provider):
     id = "pubchem"
     download_hosts = frozenset({"pubchem.ncbi.nlm.nih.gov"})
     operations = {
+        "batch_properties": Operation(
+            "Exact full InChIKey properties for up to 100 structures. Partial matches are "
+            "returned by identity, not input order; an all-missing batch can return HTTP 404.",
+            BatchProperties,
+            {"inchikeys": ["BSYNRYMUTXBXSQ-UHFFFAOYSA-N"]},
+        ),
+        "source_categories": Operation(
+            "PubChem substance depositors grouped by category, including Chemical Vendors. "
+            "Depositor catalog links are not current stock or quotes.",
+            CIDInput,
+            {"cid": 2244},
+        ),
         "properties": Operation(
             "Resolve a compound and retrieve identity/properties; SMILES uses POST.",
             CompoundInput,
@@ -62,6 +84,33 @@ class PubChem(Provider):
     }
 
     def query(self, operation, params):
+        if operation == "batch_properties":
+            response = self.request(
+                "POST",
+                f"{BASE}/compound/inchikey/property/{PROPERTIES}/JSON",
+                form={"inchikey": ",".join(params.inchikeys)},
+            )
+            return Page(
+                response.data["PropertyTable"]["Properties"],
+                [response.provenance],
+                warnings=[
+                    "Missing input keys are not present in the returned exact-key records; "
+                    "do not map output rows to input order."
+                ],
+            )
+        if operation == "source_categories":
+            response = self.request(
+                "GET",
+                f"https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/categories/compound/{params.cid}/JSON",
+            )
+            data = response.data["SourceCategories"]
+            if data["RecordType"] != "CID" or data["RecordNumber"] != params.cid:
+                raise ValueError("PubChem source categories returned another record")
+            return Page(
+                data["Categories"],
+                [response.provenance],
+                warnings=["Chemical Vendors are depositor links, not verified stock or pricing."],
+            )
         if operation == "properties":
             if params.namespace == "smiles":
                 response = self.request(

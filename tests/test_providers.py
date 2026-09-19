@@ -32,6 +32,53 @@ def test_pubchem_current_smiles_and_post_encoding(make_quarry):
     assert page.provenance[0].method == "POST"
 
 
+def test_pubchem_batch_missing_keys_and_vendor_categories(make_quarry):
+    key = "BSYNRYMUTXBXSQ-UHFFFAOYSA-N"
+
+    def handler(request):
+        if "/categories/" in request.url.path:
+            return httpx.Response(
+                200,
+                json={
+                    "SourceCategories": {
+                        "RecordType": "CID",
+                        "RecordNumber": 2244,
+                        "Categories": [{"Category": "Chemical Vendors", "Sources": []}],
+                    }
+                },
+            )
+        assert request.method == "POST"
+        assert parse_qs(request.content.decode())["inchikey"] == [key]
+        return httpx.Response(
+            200, json={"PropertyTable": {"Properties": [{"CID": 2244, "InChIKey": key}]}}
+        )
+
+    q = make_quarry(handler)
+    assert q.query("pubchem", "batch_properties", inchikeys=[key]).records[0]["CID"] == 2244
+    assert (
+        q.query("pubchem", "source_categories", cid=2244).records[0]["Category"]
+        == "Chemical Vendors"
+    )
+
+
+def test_chembl_batch_details_retains_continuation_and_all_ids(make_quarry):
+    def handler(request):
+        assert request.url.params["molecule_chembl_id__in"] == "CHEMBL25,CHEMBL26"
+        return httpx.Response(
+            200,
+            json={
+                "molecules": [{"molecule_chembl_id": "CHEMBL26"}],
+                "page_meta": {"offset": 0, "limit": 1, "total_count": 2, "next": "/molecule"},
+            },
+        )
+
+    page = make_quarry(handler).query(
+        "chembl", "batch_details", entity="molecule", chembl_ids=["CHEMBL25", "CHEMBL26"], limit=1
+    )
+    assert page.next_parameters["chembl_ids"] == ["CHEMBL25", "CHEMBL26"]
+    assert page.next_parameters["offset"] == 1
+
+
 def test_pubchem_similarity_and_assay(make_quarry):
     def handler(request):
         if "/assay/" in request.url.path:

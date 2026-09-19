@@ -37,13 +37,13 @@ def excel_workbook(path, sheets):
         for cell in sheet[1]:
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = PatternFill("solid", fgColor="24566D")
-        for row in rows or [{"status": "No records in this scope"}]:
+        for row_number, row in enumerate(rows or [{"status": "No records in this scope"}], 2):
             sheet.append([None] * len(fields))
             for col, field in enumerate(fields, 1):
                 value = row.get(field)
                 if isinstance(value, (dict, list)):
                     value = json.dumps(value, ensure_ascii=False)
-                cell = sheet.cell(sheet.max_row, col)
+                cell = sheet.cell(row_number, col)
                 if isinstance(value, str):
                     # Explicit strings prevent source content from becoming Excel formulas.
                     value = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", value)

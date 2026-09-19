@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
@@ -18,6 +18,19 @@ class TextSearch(PageInput):
 
 class TargetSearch(PageInput):
     uniprot: str = Field(pattern=r"^[A-Z0-9]{6,10}$")
+
+
+class MoleculeKeys(PageInput):
+    inchikeys: list[Annotated[str, Field(pattern=r"^[A-Z]{14}-[A-Z]{10}-[A-Z]$")]] = Field(
+        min_length=1, max_length=50
+    )
+
+
+class BatchDetails(PageInput):
+    entity: Literal["molecule", "assay", "document"]
+    chembl_ids: list[Annotated[str, Field(pattern=r"^CHEMBL[0-9]+$")]] = Field(
+        min_length=1, max_length=50
+    )
 
 
 class ActivityInput(PageInput):
@@ -45,6 +58,16 @@ class ChEMBL(Provider):
     id = "chembl"
     download_hosts = frozenset({"www.ebi.ac.uk"})
     operations = {
+        "molecules_by_inchikey": Operation(
+            "Exact full InChIKey lookup for up to 50 structures; absence applies to this source.",
+            MoleculeKeys,
+            {"inchikeys": ["BSYNRYMUTXBXSQ-UHFFFAOYSA-N"], "limit": 100},
+        ),
+        "batch_details": Operation(
+            "Retrieve up to 50 explicit molecule, assay or document IDs with pagination.",
+            BatchDetails,
+            {"entity": "molecule", "chembl_ids": ["CHEMBL25"], "limit": 100},
+        ),
         "molecule": Operation(
             "Compound details, hierarchy and source structure.", ChemblID, {"chembl_id": "CHEMBL25"}
         ),
@@ -94,7 +117,14 @@ class ChEMBL(Provider):
             response = self.request("GET", f"{BASE}/{operation}/{params.chembl_id}.json")
             return Page([response.data], [response.provenance])
         query = params.model_dump(exclude_none=True)
-        if operation == "search_molecules":
+        if operation == "batch_details":
+            path = query.pop("entity")
+            key = {"molecule": "molecules", "assay": "assays", "document": "documents"}[path]
+            query[f"{path}_chembl_id__in"] = ",".join(query.pop("chembl_ids"))
+        elif operation == "molecules_by_inchikey":
+            path, key = "molecule", "molecules"
+            query["molecule_structures__standard_inchi_key__in"] = ",".join(query.pop("inchikeys"))
+        elif operation == "search_molecules":
             path, key = "molecule/search", "molecules"
             query["q"] = query.pop("query")
         elif operation == "targets_by_uniprot":

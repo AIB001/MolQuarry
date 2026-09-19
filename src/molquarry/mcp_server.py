@@ -271,6 +271,60 @@ def create_server(quarry: MolQuarry | None = None):
 
         return await anyio.to_thread.run_sync(lambda: invoke(run))
 
+    @server.tool(
+        annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True)
+    )
+    async def screen_compound_sourcing(
+        input_relative_path: str,
+        output_relative_path: str,
+        config: dict[str, Any] | None = None,
+        resume: bool = False,
+        retry_errors: bool = False,
+    ) -> CallToolResult:
+        """Check an SDF against public identity/catalog sources and export an evidence-linked Excel.
+        Unknown stock and synthesis feasibility remain unknown; no orders or quotes are submitted.
+        Input, output and optional local catalog paths are relative to MOLQUARRY_WORKSPACE.
+        """
+
+        def run():
+            from .workflows.sourcing import SourcingConfig, screen_sdf
+
+            settings = SourcingConfig.model_validate(config or {})
+            settings.local_catalogs = [
+                str(workspace_path(path)) for path in settings.local_catalogs
+            ]
+            return screen_sdf(
+                client,
+                workspace_path(input_relative_path),
+                workspace_path(output_relative_path),
+                config=settings,
+                resume=resume,
+                retry_errors=retry_errors,
+            )
+
+        return await anyio.to_thread.run_sync(lambda: invoke(run))
+
+    @server.tool()
+    async def export_target_inventory(
+        dossier_relative_path: str,
+        output_relative_path: str,
+        sourcing_relative_path: str | None = None,
+    ) -> dict:
+        """Export collected compounds and assays, including negatives and vendor evidence."""
+
+        def run():
+            from .workflows.ligands import export_ligand_inventory
+
+            return export_ligand_inventory(
+                workspace_path(dossier_relative_path),
+                workspace_path(output_relative_path),
+                sourcing_path=workspace_path(sourcing_relative_path)
+                if sourcing_relative_path
+                else None,
+            )
+
+        return await anyio.to_thread.run_sync(lambda: invoke(run))
+
     return server
 
 

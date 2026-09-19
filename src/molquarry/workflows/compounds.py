@@ -87,6 +87,7 @@ def prepare_molecule(molecule, *, experimental=False, seed=20260919):
     if generated:
         options = AllChem.ETKDGv3()
         options.randomSeed = seed
+        options.timeout = 10
         if AllChem.EmbedMolecule(prepared, options) != 0:
             raise ValueError("ETKDG could not produce a conformer")
     ff = None

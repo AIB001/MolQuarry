@@ -2,11 +2,11 @@
 
 MolQuarry gives agents a consistent way to discover CADD data sources, query scientific evidence, download official files, and search authorized local catalogs. Its target workflow produces organized **PDB structures and alignments, an Excel compound workbook, RDKit-prepared 3D SDF files, source evidence and AF3 job inputs**.
 
-**Version 0.3 covers 51 sources in 12 categories:** 41 remote query/file-discovery adapters and 10 official access guides with local import/search. There are **105 query/discovery operations and 28 download operations**, plus `resources` on each source. These counts describe implemented operations, not complete coverage or public API availability at every website.
+**Version 0.4 covers 51 sources in 12 categories:** 41 remote query/file-discovery adapters and 10 official access guides with local import/search. There are **109 query/discovery operations and 28 download operations**, plus `resources` on each source. These counts describe implemented operations, not complete coverage or public API availability at every website.
 
 The [target modulator skill](skills/molquarry-target-modulators/SKILL.md) guides inhibitor and agonist discovery. The MTDH/SND1 example (`examples/mtdh_snd1/README.md`, local workspace) contains an executed public-source search and deliverables. Original 50-source verification and the Gleevec FDA approval case remain in verification (`docs/verification.md`, local workspace); the current workflow review is in workflow review (`docs/workflow-review.md`, local workspace).
 
-The Git repository contains runtime code, tests, scripts, skills and this README. Extended `docs/`, `examples/`, build artifacts and generated results remain local and are intentionally excluded from Git. Live verification commands write their own evidence locally.
+The Git repository contains runtime code, tests, scripts, skills and this README. Extended `docs/`, `examples/`, `example/`, build artifacts and generated results remain local and are intentionally excluded from Git. Live verification commands write their own evidence locally.
 
 ## Install
 
@@ -76,6 +76,26 @@ Ligand processing assigns source chemistry, sanitizes with RDKit and adds hydrog
 
 Public purchasing checks use exact Mcule identity lookup. Catalog presence does not establish stock, price, packaging or lead time; these fields remain unverified until an authorized supplier service or quote supplies them. Credentials and live sourcing extensions are separate from the public case.
 
+## All-ligand inventory and shortlist sourcing
+
+Load the [target skill](skills/molquarry-target-modulators/SKILL.md) for ligand discovery and the [compound sourcing skill](skills/molquarry-compound-sourcing/SKILL.md) for an SDF make-versus-buy screen. These are repository skills; they do not install themselves into a home directory.
+
+```bash
+molquarry collect STK17B --mode ligand --taxon 9606 --max-pages 100 --max-details 5000 \
+  --output-dir example/stk17b/collection
+molquarry ligand-table example/stk17b/collection/dossier.json --output-dir example/stk17b/inventory
+molquarry inventory-3d example/stk17b/inventory/inventory.json --output-dir example/stk17b/computed_3d
+molquarry source-sdf path/to/shortlist.sdf --output-dir example/shortlist --max-mcule-queries 20
+# Resume the same input/configuration without repeating saved queries.
+molquarry source-sdf path/to/shortlist.sdf --output-dir example/shortlist --max-mcule-queries 20 --resume
+```
+
+`ligand-table` retains every collected ChEMBL/BindingDB measurement, source PMID/DOI, identity and assay context. It separates inactive, censored, quantitative-potency and other readouts. A database measurement is not automatically a validated ligand. `--sourcing path/to/results.json` joins public vendor evidence into a new inventory; `--highlights highlights.json` adds explicitly reviewed literature leads. `inventory-3d` generates labeled computed conformers with per-compound identity, force-field and failure checks; these are separate from experimental binding poses.
+
+`source-sdf` produces `tables/sourcing.xlsx`, `results.json`, `run.json`, a copied `input/shortlist.sdf`, resumable `evidence/queries/`, and a SHA256 `manifest.json`. Its nine sheets preserve every input row, exact and parent identities, library matches, vendor listings, source coverage and synthesis heuristics. PubChem/ChEMBL use batched exact InChIKey queries; UniChem cross-references are checked against the returned full InChI. `--local-catalog catalog.csv` adds an authorized CSV/TSV/SDF snapshot. Mcule lookups have an explicit per-run cap; its anonymous quota is shared with other work. Credentials are required for additional live supplier services. Catalog listings do not confirm stock or price, and SA/BRICS heuristics do not establish a synthesis route.
+
+The executed STK17B cases live locally in `example/stk17b_ligands/` and `example/stk17b_shortlist/`. Their data, molecules, caches and reports are intentionally absent from Git. They test real public sources, not only mocked endpoints. The target case also records inaccessible full texts, unresolved literature identities and unsuccessful 3D preparation.
+
 ## AlphaFold 3
 
 The bundle prepares official **AlphaFold Server JSON** and **local AlphaFold 3 JSON**, with one job per target and a complex job for multiple targets. This is recorded as `prepared_not_submitted`.
@@ -109,7 +129,7 @@ All sources expose `resources` and the shared local CSV/TSV/SDF import/search to
 | 4 | [BioLiP2 / BioLiP3](https://zhanggroup.org/BioLiP/download.html) / `biolip` | [x] File discovery | `files` | `artifact` | semantic_passed |
 | 5 | [BLD Pharmatech](https://www.bldpharm.com/) / `bld` | [x] Local import; [ ] Remote API | Official access guide and local search | — | website_only |
 | 6 | [ChEBI](https://www.ebi.ac.uk/chebi/backend/api/docs/) / `chebi` | [x] Public API | `compound`, `search`, `parents`, `files` | `molfile`, `artifact` | semantic_passed |
-| 7 | [ChEMBL](https://chembl.gitbook.io/chembl-interface-documentation/web-services/chembl-data-web-services) / `chembl` | [x] Public API | `molecule`, `target`, `assay`, `document`, `search_molecules`, `targets_by_uniprot`, `activities`, `search_assays`, `files` | `sdf`, `artifact` | semantic_passed |
+| 7 | [ChEMBL](https://chembl.gitbook.io/chembl-interface-documentation/web-services/chembl-data-web-services) / `chembl` | [x] Public API | `molecule`, `target`, `assay`, `document`, `search_molecules`, `targets_by_uniprot`, `activities`, `search_assays`, `molecules_by_inchikey`, `batch_details`, `files` | `sdf`, `artifact` | semantic_passed |
 | 8 | [ChemDiv](https://www.chemdiv.com/catalog/screening-libraries/) / `chemdiv` | [x] Local import; [ ] Remote API | Official access guide and local search | — | website_only |
 | 9 | [Chemspace](https://api.chem-space.com/docs/) / `chemspace` | [x] Auth adapter | `search` | — | deferred_credentials |
 | 10 | [ClinicalTrials.gov](https://clinicaltrials.gov/data-api/api) / `clinicaltrials` | [x] Public API | `study`, `search` | — | semantic_passed |
@@ -141,7 +161,7 @@ All sources expose `resources` and the shared local CSV/TSV/SDF import/search to
 | 36 | [Open Reaction Database](https://github.com/open-reaction-database/ord-data) / `ord` | [x] File discovery | `tree` | `dataset` | semantic_passed |
 | 37 | [PDBbind+](https://www.pdbbind-plus.org.cn/) / `pdbbind` | [x] Local import; [ ] Remote API | Official access guide and local search | — | website_only |
 | 38 | [PLINDER](https://plinder-org.github.io/plinder/tutorial/dataset.html) / `plinder` | [x] File discovery | `objects` | `object` | blocked |
-| 39 | [PubChem Compound / BioAssay](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest) / `pubchem` | [x] Public API | `properties`, `similarity`, `assay`, `files` | `sdf`, `artifact` | semantic_passed |
+| 39 | [PubChem Compound / BioAssay](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest) / `pubchem` | [x] Public API | `properties`, `batch_properties`, `source_categories`, `similarity`, `assay`, `files` | `sdf`, `artifact` | semantic_passed |
 | 40 | [RCSB PDB / wwPDB](https://www.rcsb.org/docs/programmatic-access/web-apis-overview) / `rcsb` | [x] Public API | `entry`, `ligand`, `nonpolymer_entity`, `polymer_entity`, `search`, `by_uniprot` | `structure` | semantic_passed |
 | 41 | [Reactome](https://reactome.org/ContentService/) / `reactome` | [x] Public API | `pathway`, `pathways_by_uniprot`, `files` | `artifact` | semantic_passed |
 | 42 | [STRING](https://string-db.org/help/api/) / `string` | [x] Public API | `map_ids`, `network`, `partners`, `enrichment`, `version` | — | semantic_passed |
@@ -199,7 +219,7 @@ Known boundaries:
 }
 ```
 
-There are **11 MCP tools**: `list_sources`, `describe_source`, `query_database`, `plan_download`, `download_data`, `import_catalog`, `local_catalogs`, `search_local_catalog`, `collect_target_evidence`, `build_target_bundle`, and `import_af3_results`. Workflow paths are relative to `MOLQUARRY_WORKSPACE`, defaulting to the server's current working directory. Set it to the agent's project directory when starting a server from another location. Workflow outputs never default to `~`.
+There are **13 MCP tools**: `list_sources`, `describe_source`, `query_database`, `plan_download`, `download_data`, `import_catalog`, `local_catalogs`, `search_local_catalog`, `collect_target_evidence`, `build_target_bundle`, `import_af3_results`, `screen_compound_sourcing`, and `export_target_inventory`. Workflow paths are relative to `MOLQUARRY_WORKSPACE`, defaulting to the server's current working directory. Set it to the agent's project directory when starting a server from another location. Workflow outputs never default to `~`.
 
 The repository skill is [skills/molquarry-target-modulators/SKILL.md](skills/molquarry-target-modulators/SKILL.md). Load this skill in the agent or expose it through the agent's project skill mechanism; no global home-directory installation is performed. Start with `list_sources → describe_source → query_database`, or use `collect_target_evidence` and the reviewed bundle workflow. MCP network tasks run outside the event loop; large files are returned as paths and manifests.
 
@@ -253,7 +273,7 @@ Missing credentials fail before requests. Authenticated responses do not enter t
 
 - [x] 51 sources, 12 categories, strict schemas and source-specific access levels.
 - [x] 41 remote adapters and 10 authorized local-file workflows.
-- [x] SDK, JSON CLI and 11 MCP tools.
+- [x] SDK, JSON CLI and 13 MCP tools.
 - [x] Pacing, retries, cache isolation, response limits, original-file manifests and bounded local imports.
 - [x] Europe PMC abstracts/full text, ChEMBL assay/document expansion and RCSB entity traversal.
 - [x] Inhibitor/agonist collection with identity resolution, provenance, review queue and coverage.
@@ -262,6 +282,8 @@ Missing credentials fail before requests. Authenticated responses do not enter t
 - [x] Excel compound/measurement/procurement workbook and RDKit-prepared 3D SDF output.
 - [x] Official AF3 input export, actual-result ZIP import and explicit local-runner interface.
 - [x] Public-source FDA approval example and MTDH/SND1 worked case.
+- [x] STK17B all-ligand inventory, full shortlist screen, exact stereo checks and English sourcing skill.
+- [x] Batched identity/detail queries, resumable request evidence and bounded parallel conformer generation.
 - [ ] Authenticated live tests for nine credentialed sources and restricted vendor downloads.
 - [ ] AlphaFold Server browser automation/session integration; actual AF3 inference acceptance.
 - [ ] Verified supplier offers with current stock, prices, delivery region and lead time.
