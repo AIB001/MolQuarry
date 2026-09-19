@@ -2,7 +2,7 @@
 
 MolQuarry gives agents a consistent way to discover CADD data sources, query scientific evidence, download official files, and search authorized local catalogs. Its target workflow produces organized **PDB structures and alignments, an Excel compound workbook, RDKit-prepared 3D SDF files, source evidence and AF3 job inputs**.
 
-**Version 0.4 covers 51 sources in 12 categories:** 41 remote query/file-discovery adapters and 10 official access guides with local import/search. There are **109 query/discovery operations and 28 download operations**, plus `resources` on each source. These counts describe implemented operations, not complete coverage or public API availability at every website.
+**Version 0.4.1 covers 51 sources in 12 categories:** 41 remote query/file-discovery adapters and 10 official access guides with local import/search. There are **109 query/discovery operations and 28 download operations**, plus `resources` on each source. These counts describe implemented operations, not complete coverage or public API availability at every website.
 
 The [target modulator skill](skills/molquarry-target-modulators/SKILL.md) guides inhibitor and agonist discovery. The MTDH/SND1 example (`examples/mtdh_snd1/README.md`, local workspace) contains an executed public-source search and deliverables. Original 50-source verification and the Gleevec FDA approval case remain in verification (`docs/verification.md`, local workspace); the current workflow review is in workflow review (`docs/workflow-review.md`, local workspace).
 
@@ -284,6 +284,8 @@ Missing credentials fail before requests. Authenticated responses do not enter t
 - [x] Public-source FDA approval example and MTDH/SND1 worked case.
 - [x] STK17B all-ligand inventory, full shortlist screen, exact stereo checks and English sourcing skill.
 - [x] Batched identity/detail queries, resumable request evidence and bounded parallel conformer generation.
+- [x] Reviewed URL query preservation, pagination-loop handling, archived-input integrity and SDF read-back/resume checks.
+- [x] Excel export avoids repeated worksheet scans; the local 500-row × 24-column benchmark retained identical values and ran about 10.8× faster than the baseline.
 - [ ] Authenticated live tests for nine credentialed sources and restricted vendor downloads.
 - [ ] AlphaFold Server browser automation/session integration; actual AF3 inference acceptance.
 - [ ] Verified supplier offers with current stock, prices, delivery region and lead time.

@@ -181,5 +181,46 @@ def test_mcp_stdio_handshake_discovery_and_structured_error(tmp_path):
                     failure = await session.call_tool(tool, parameters)
                     assert failure.isError
                     assert failure.structuredContent["error"]["code"] == "invalid_path"
+                try:
+                    import openpyxl
+                    from rdkit import Chem
+                except ImportError:
+                    return  # Core MCP remains testable without the optional chemistry extra.
+                sdf_path = tmp_path / "input.sdf"
+                with Chem.SDWriter(str(sdf_path)) as writer:
+                    writer.write(Chem.MolFromSmiles("CCO"))
+                sourcing = await session.call_tool(
+                    "screen_compound_sourcing",
+                    {
+                        "input_relative_path": "input.sdf",
+                        "output_relative_path": "sourcing",
+                        "config": {
+                            "pubchem": False,
+                            "chembl": False,
+                            "unichem": False,
+                            "max_mcule_queries": 0,
+                        },
+                    },
+                )
+                assert not sourcing.isError and sourcing.structuredContent["input_records"] == 1
+                dossier = {
+                    "chembl_details": {"molecule": [], "document": []},
+                    "activities": [],
+                    "bindingdb": [],
+                    "coverage": [],
+                    "papers": [],
+                }
+                (tmp_path / "dossier.json").write_text(json.dumps(dossier))
+                inventory = await session.call_tool(
+                    "export_target_inventory",
+                    {
+                        "dossier_relative_path": "dossier.json",
+                        "output_relative_path": "inventory",
+                    },
+                )
+                assert not inventory.isError and inventory.structuredContent["compounds"] == 0
+                book = openpyxl.load_workbook(tmp_path / "inventory/ligands.xlsx", read_only=True)
+                assert "Measurements" in book.sheetnames
+                book.close()
 
     asyncio.run(run())

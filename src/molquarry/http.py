@@ -189,6 +189,7 @@ class HttpClient:
                 "body": body,
                 "form": form if not private else None,
                 "response_format": response_format,
+                "url_query_policy": "merge-v1",
             }
         )
         hit = self._cached(key, spec.cache_ttl_seconds) if cache else None
@@ -197,12 +198,13 @@ class HttpClient:
         for attempt in range(self.max_attempts):
             self.pace(spec)
             try:
-                target = url
+                # httpx's params argument replaces an existing query string, even for {}.
+                # Preserve fixed URL parameters and override only explicitly supplied keys.
+                target = str(httpx.URL(url).copy_merge_params(params))
                 for redirects in range(6):
                     with self.client.stream(
                         method,
                         target,
-                        params=params if target == url else None,
                         json=body,
                         data=form,
                         headers=headers,

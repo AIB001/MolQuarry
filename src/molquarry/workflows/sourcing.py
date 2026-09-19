@@ -66,6 +66,8 @@ def read_sdf(path, config):
         structures.setdefault(
             key, {"inchikey": key, "smiles": descriptors["smiles_rdkit"], "role": "sdf"}
         )
+        if structures[key]["role"] == "parent_variant":
+            structures[key]["role"] = "sdf_and_parent_variant"
         raw_parent = row["input_properties"].get("MOLCASCADE_PARENT_SMILES")
         if raw_parent:
             parent = Chem.MolFromSmiles(raw_parent)
@@ -83,6 +85,8 @@ def read_sdf(path, config):
                     else "connectivity_differs"
                 )
                 if config.include_parent_variants and parent_key and parent_key != key:
+                    if parent_key in structures and structures[parent_key]["role"] == "sdf":
+                        structures[parent_key]["role"] = "sdf_and_parent_variant"
                     structures.setdefault(
                         parent_key,
                         {
@@ -125,6 +129,8 @@ def lookup_batches(journal, source, operation, keys, size, progress):
         if source == "chembl":
             parameters["limit"] = 100
         response = journal.query(source, operation, **parameters)
+        visited = {digest(parameters)}
+        page_count = 1
         for key in batch:
             statuses[key] = {
                 "status": "no_exact_match_in_source"
@@ -143,6 +149,12 @@ def lookup_batches(journal, source, operation, keys, size, progress):
             next_params = response.get("result", {}).get("next_parameters")
             if not next_params:
                 break
+            if digest(next_params) in visited or page_count >= 100:
+                for key in batch:
+                    statuses[key]["status"] = "partial_pagination"
+                break
+            visited.add(digest(next_params))
+            page_count += 1
             response = journal.query(source, operation, **next_params)
             if response["status"] != "ok":
                 for key in batch:
@@ -174,6 +186,14 @@ def local_catalog_matches(paths, structures):
         elif path.suffix.lower() in {".csv", ".tsv"}:
             file = path.open(encoding="utf-8-sig", newline="")
             records = csv.DictReader(file, delimiter="\t" if path.suffix.lower() == ".tsv" else ",")
+            fields = records.fieldnames
+            if (
+                not fields
+                or any(not f for f in fields)
+                or len({f.casefold() for f in fields}) != len(fields)
+            ):
+                file.close()
+                raise ValueError("Local catalog requires unique, nonempty column names")
         else:
             raise ValueError("Local catalog must be CSV, TSV or SDF")
         seen, invalid = 0, 0
@@ -182,6 +202,12 @@ def local_catalog_matches(paths, structures):
                 seen += 1
                 if seen > 100000:
                     raise ValueError("Local catalog exceeds 100,000 records")
+                if (
+                    None in record
+                    or any(v is None for v in record.values())
+                    or len({k.casefold() for k in record}) != len(record)
+                ):
+                    raise ValueError("Local catalog has a malformed row or ambiguous columns")
                 lower = {key.lower(): val for key, val in record.items()}
                 smiles = (
                     lower.get("smiles")
@@ -223,7 +249,9 @@ def screen_sdf(
     progress=None,
 ):
     """Run real public lookups for every unique identity and retain resumable request evidence."""
+    import openpyxl  # noqa: F401 -- fail before queries when an export dependency is missing
     from rdkit import Chem, rdBase
+    from rdkit.Contrib.SA_Score import sascorer  # noqa: F401
 
     config = config or SourcingConfig()
     if isinstance(config, dict):
@@ -249,6 +277,12 @@ def screen_sdf(
         previous = json.loads((root / "request.json").read_text(encoding="utf-8"))
         if previous != spec:
             raise ValueError("Resume input/config/catalog fingerprint differs from the saved run")
+        copied_input = root / "input" / "shortlist.sdf"
+        if (
+            not copied_input.is_file()
+            or hashlib.sha256(copied_input.read_bytes()).hexdigest() != input_hash
+        ):
+            raise ValueError("Saved input copy differs from the original run")
     else:
         root.mkdir(parents=True)
         (root / "input").mkdir()

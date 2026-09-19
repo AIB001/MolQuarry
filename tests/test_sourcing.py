@@ -5,7 +5,13 @@ import pytest
 from molquarry.errors import MolQuarryError
 from molquarry.models import QueryResult
 from molquarry.workflows.journal import QueryJournal
-from molquarry.workflows.sourcing import SourcingConfig, lookup_batches, read_sdf, screen_sdf
+from molquarry.workflows.sourcing import (
+    SourcingConfig,
+    local_catalog_matches,
+    lookup_batches,
+    read_sdf,
+    screen_sdf,
+)
 
 Chem = pytest.importorskip("rdkit.Chem")
 pytest.importorskip("openpyxl")
@@ -117,3 +123,40 @@ def test_journal_retries_errors_only_when_requested(tmp_path):
     journal.retry_errors = True
     assert journal.query("pubchem", "batch_properties", inchikeys=[])["status"] == "ok"
     assert len(quarry.calls) == 2
+
+
+def test_repeated_batch_continuation_is_incomplete_not_absent(tmp_path):
+    class Repeating(FakeQuarry):
+        def query(self, source, operation, **params):
+            result = super().query(source, operation, **params)
+            result.next_parameters = params
+            return result
+
+    journal = QueryJournal(Repeating(), tmp_path)
+    _, statuses = lookup_batches(journal, "chembl", "batch_details", ["key"], 50, print)
+    assert statuses["key"]["status"] == "partial_pagination"
+
+
+def test_resume_refuses_a_changed_archived_input(tmp_path):
+    path = tmp_path / "input.sdf"
+    sdf(path, ["CCO"])
+    output = tmp_path / "run"
+    config = SourcingConfig(pubchem=False, chembl=False, unichem=False, max_mcule_queries=0)
+    screen_sdf(FakeQuarry(), path, output, config=config)
+    (output / "input/shortlist.sdf").write_text("changed")
+    with pytest.raises(ValueError, match="Saved input copy"):
+        screen_sdf(FakeQuarry(), path, output, config=config, resume=True)
+
+
+def test_local_catalog_wrong_column_count_does_not_become_no_match(tmp_path):
+    path = tmp_path / "catalog.csv"
+    path.write_text("name,smiles\none,CCO,unexpected\n")
+    with pytest.raises(ValueError, match="malformed row"):
+        local_catalog_matches([str(path)], {})
+
+
+def test_identity_role_can_be_both_sdf_and_parent_variant(tmp_path):
+    path = tmp_path / "input.sdf"
+    sdf(path, ["C[C@H](O)C(=O)O", "CC(O)C(=O)O"])
+    rows, identities = read_sdf(path, SourcingConfig())
+    assert identities[rows[1]["inchikey"]]["role"] == "sdf_and_parent_variant"

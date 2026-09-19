@@ -48,4 +48,6 @@ Return links to `tables/sourcing.xlsx`, `run.json` and the run directory. Explai
 
 Retain raw query responses/errors, source provenance, source-specific coverage, original input hash, tool versions and file checksums. Resume only when the input, configuration and supplied local catalog hashes agree. Do not publish private input molecules or generated results merely because the software repository is being pushed.
 
+If a source repeats a continuation or exceeds the page budget, report `partial_pagination`, not absence. Resume also verifies the archived SDF copy. When deliberately retrying source errors after an outage, use `--retry-errors`; add the global `--no-cache` option when stale transport responses are suspected. Do not repeatedly retry authentication or quota failures.
+
 After a real case, update this skill only when the observed result reveals a concrete workflow or interpretation gap. Record remaining uncertainties in the result, not as invented negative findings.

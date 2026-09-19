@@ -304,12 +304,14 @@ def create_server(quarry: MolQuarry | None = None):
 
         return await anyio.to_thread.run_sync(lambda: invoke(run))
 
-    @server.tool()
+    @server.tool(
+        annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)
+    )
     async def export_target_inventory(
         dossier_relative_path: str,
         output_relative_path: str,
         sourcing_relative_path: str | None = None,
-    ) -> dict:
+    ) -> CallToolResult:
         """Export collected compounds and assays, including negatives and vendor evidence."""
 
         def run():

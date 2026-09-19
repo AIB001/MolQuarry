@@ -364,7 +364,12 @@ def export_compounds(
         "compounds": rows,
         "purchases": purchases,
         "sdf": sdf_index,
-        "purchase_scope": "Public Mcule catalog lookup; no live prices, stock or orders.",
+        "purchase_scope": (
+            f"Public Mcule catalog lookup: {purchase_calls} calls, budget {max_purchase_queries}; "
+            "no live prices, stock or orders."
+            if purchasing
+            else "Purchasing lookups were not requested."
+        ),
         "rdkit_version": rdBase.rdkitVersion,
     }
     (root / "index.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

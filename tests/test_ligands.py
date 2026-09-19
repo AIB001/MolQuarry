@@ -48,3 +48,39 @@ def test_bindingdb_censoring_and_duplicate_source_records_are_retained():
     assert result["measurements"][0]["relation"] == ">"
     assert not result["compounds"][0]["has_reported_quantitative_potency"]
     assert result["compounds"][0]["measurement_count"] == 2
+
+
+def test_overlap_normalizes_number_format_without_mixing_targets():
+    pytest.importorskip("rdkit")
+    chemical = {
+        "activity_id": 1,
+        "molecule_chembl_id": "CHEMBL1",
+        "canonical_smiles": "CCO",
+        "document_chembl_id": "CHEMBL2",
+        "standard_type": "Kd",
+        "standard_relation": "=",
+        "standard_value": "10",
+        "standard_units": "nM",
+    }
+    binding = {
+        "monomerid": "1",
+        "smile": "CCO",
+        "affinity_type": "Kd",
+        "affinity": "10.0000",
+        "pmid": "1234",
+        "doi": "10.fixture",
+    }
+    dossier = {
+        "chembl_details": {
+            "molecule": [],
+            "document": [{"document_chembl_id": "CHEMBL2", "pubmed_id": 1234}],
+        },
+        "activities": [{"input_target": "A", "record": chemical}],
+        "bindingdb": [{"input_target": "A", "record": binding}],
+    }
+    result = ligand_inventory(dossier)
+    assert all(r["possible_cross_source_overlap"] for r in result["measurements"])
+    dossier["bindingdb"][0]["input_target"] = "B"
+    assert not any(
+        r["possible_cross_source_overlap"] for r in ligand_inventory(dossier)["measurements"]
+    )

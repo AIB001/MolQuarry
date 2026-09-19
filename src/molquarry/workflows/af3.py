@@ -97,10 +97,15 @@ def import_af3_results(archive, output_dir, *, max_bytes=500_000_000):
     if source.stat().st_size > max_bytes:
         raise ValueError("AF3 archive exceeds the import byte budget")
     allowed = {".cif", ".pdb", ".json", ".csv", ".md", ".txt", ".png"}
-    with zipfile.ZipFile(source) as zf:
+    try:
+        archive_file = zipfile.ZipFile(source)
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Invalid AF3 ZIP archive") from exc
+    with archive_file as zf:
         entries = zf.infolist()
         if len(entries) > 2000 or sum(f.file_size for f in entries) > max_bytes:
             raise ValueError("AF3 archive exceeds the expanded-size or entry budget")
+        names = set()
         for entry in entries:
             path = PurePosixPath(entry.filename)
             if (
@@ -112,6 +117,10 @@ def import_af3_results(archive, output_dir, *, max_bytes=500_000_000):
                 raise ValueError("Unsafe AF3 archive path")
             if stat.S_ISLNK(entry.external_attr >> 16):
                 raise ValueError("Symlinks are not accepted in AF3 archives")
+            normalized = str(path).casefold()
+            if normalized in names:
+                raise ValueError("Duplicate AF3 archive path")
+            names.add(normalized)
         root.mkdir(parents=True)
         copied, model_files, confidence, errors = [], [], [], []
         for entry in entries:
@@ -134,7 +143,10 @@ def import_af3_results(archive, output_dir, *, max_bytes=500_000_000):
                     "coordinate_valid": True,
                 }
                 try:
-                    out = root / "pdb" / Path(entry.filename).with_suffix(".pdb")
+                    # Preserve both coordinate formats when an archive contains model.cif
+                    # and model.pdb; output names must not overwrite or collide.
+                    relative = Path(entry.filename)
+                    out = root / "pdb" / relative.with_name(relative.name + ".pdb")
                     out.parent.mkdir(parents=True, exist_ok=True)
                     chain_map = pdb_export(structure, out)
                     record.update(

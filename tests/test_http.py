@@ -171,6 +171,20 @@ def test_text_and_json_caches_do_not_collide(make_quarry):
     assert len(calls) == 2
 
 
+def test_url_query_is_preserved_and_explicit_parameters_override(make_quarry):
+    calls = []
+    q = make_quarry(lambda r: calls.append(r) or httpx.Response(200, json={}))
+    url = "https://pubchem.ncbi.nlm.nih.gov/fixture?heading=Chemical+Vendors&limit=3"
+    q.http.json(SOURCES["pubchem"], "GET", url)
+    assert calls[-1].url.params["heading"] == "Chemical Vendors"
+    q.http.json(SOURCES["pubchem"], "GET", url, params={"limit": 7, "offset": 2})
+    assert dict(calls[-1].url.params) == {
+        "heading": "Chemical Vendors",
+        "limit": "7",
+        "offset": "2",
+    }
+
+
 def test_bulk_redirect_rejects_external_host(make_quarry):
     calls = []
     q = make_quarry(

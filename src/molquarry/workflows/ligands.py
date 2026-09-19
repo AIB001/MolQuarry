@@ -4,6 +4,7 @@ import json
 import math
 import re
 from collections import Counter, defaultdict
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from .bundle import excel_workbook
@@ -173,13 +174,18 @@ def ligand_inventory(dossier):
         if row["doi"]:
             compound["dois"].add(row["doi"])
         # An overlap lead, not a claim that these are the same independent experiment.
+        try:
+            numeric_value = str(Decimal(str(row["value"])).normalize())
+        except InvalidOperation:
+            numeric_value = str(row["value"])
         overlap[
             (
                 row["compound_id"],
+                row["target"],
                 row["pmid"],
                 row["endpoint"],
                 row["relation"],
-                str(row["value"]),
+                numeric_value,
                 row["unit"],
             )
         ].append(row)
@@ -215,17 +221,17 @@ def export_ligand_inventory(
     dossier = json.loads(Path(dossier_path).read_text(encoding="utf-8"))
     result = ligand_inventory(dossier)
     root = Path(output_dir)
-    root.mkdir(parents=True, exist_ok=False)
     purchases = {}
-    sourcing = json.loads(Path(sourcing_path).read_text()) if sourcing_path else {}
+    sourcing = json.loads(Path(sourcing_path).read_text(encoding="utf-8")) if sourcing_path else {}
     conformers = (
-        json.loads(Path(conformer_index_path).read_text())["records"]
+        json.loads(Path(conformer_index_path).read_text(encoding="utf-8"))["records"]
         if conformer_index_path
         else []
     )
     conformer_map = {r["compound_id"]: r for r in conformers}
     for row in sourcing.get("identities", []):
         purchases[row["inchikey"]] = row
+    root.mkdir(parents=True, exist_ok=False)
     sdf_index = []
     with Chem.SDWriter(str(root / "all_tested_compounds_2d.sdf")) as writer:
         for row in result["compounds"]:

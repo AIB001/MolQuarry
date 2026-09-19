@@ -166,6 +166,7 @@ def build_target_bundle(
         for m in c["measurements"]
     ]
     molecule_map = {r["molecule_chembl_id"]: r for r in dossier["chembl_details"]["molecule"]}
+    document_map = {r["document_chembl_id"]: r for r in dossier["chembl_details"]["document"]}
     database_rows, seen = [], set()
     for item in [*dossier["activities"], *dossier.get("assay_mention_activities", [])]:
         raw = item["record"]
@@ -190,15 +191,7 @@ def build_target_bundle(
                 "assay_id": raw["assay_chembl_id"],
                 "assay": raw.get("assay_description"),
                 "document": raw.get("document_chembl_id"),
-                "pmid": raw.get("document_chembl_id")
-                and next(
-                    (
-                        r.get("pubmed_id")
-                        for r in dossier["chembl_details"]["document"]
-                        if r["document_chembl_id"] == raw["document_chembl_id"]
-                    ),
-                    None,
-                ),
+                "pmid": document_map.get(raw.get("document_chembl_id"), {}).get("pubmed_id"),
                 "review_status": item["review_status"],
             }
         )

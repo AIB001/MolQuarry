@@ -174,6 +174,32 @@ def test_af3_import_retains_confidence_and_marks_predictions(tmp_path):
     assert (tmp_path / "out" / result["models"][0]["pdb"]).is_file()
 
 
+def test_af3_archive_with_cif_and_pdb_preserves_both_models(tmp_path):
+    archive = tmp_path / "both.zip"
+    s = structure()
+    s.name = "fixture"
+    with zipfile.ZipFile(archive, "w") as f:
+        f.writestr("sample_model.cif", s.make_mmcif_document().as_string())
+        s[0][0].name = "A"
+        f.writestr("sample_model.pdb", s.make_pdb_string())
+    result = import_af3_results(archive, tmp_path / "out")
+    paths = [r["pdb"] for r in result["models"]]
+    assert len(set(paths)) == 2 and all((tmp_path / "out" / p).exists() for p in paths)
+
+
+def test_af3_invalid_zip_and_case_collisions_fail_before_output(tmp_path):
+    bad = tmp_path / "bad.zip"
+    bad.write_bytes(b"not a zip")
+    with pytest.raises(ValueError, match="Invalid AF3 ZIP"):
+        import_af3_results(bad, tmp_path / "out")
+    with zipfile.ZipFile(bad, "w") as f:
+        f.writestr("MODEL.cif", "a")
+        f.writestr("model.cif", "b")
+    with pytest.raises(ValueError, match="Duplicate AF3"):
+        import_af3_results(bad, tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+
+
 @pytest.mark.parametrize("content", ["not a CIF", "data_empty\n_entry.id empty\n"])
 def test_af3_invalid_or_empty_coordinates_are_not_models(tmp_path, content):
     archive = tmp_path / "invalid.zip"
