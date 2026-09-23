@@ -96,6 +96,43 @@ def test_pubchem_similarity_and_assay(make_quarry):
     assert q.query("pubchem", "assay", aid=1).returned == 1
 
 
+def test_pubchem_substructure_preserves_matching_options_and_coverage(make_quarry):
+    smiles = r"C/C=C\C.[NH4+]"
+
+    def handler(request):
+        assert request.method == "POST"
+        assert request.url.path.endswith("/fastsubstructure/smiles/cids/JSON")
+        assert parse_qs(request.content.decode())["smiles"] == [smiles]
+        assert request.url.params["Stereo"] == "relative"
+        assert request.url.params["MatchCharges"] == "false"
+        assert request.url.params["MatchIsotopes"] == "true"
+        assert request.url.params["RingsNotEmbedded"] == "true"
+        assert request.url.params["MaxRecords"] == "2"
+        return httpx.Response(200, json={"IdentifierList": {"CID": [2244, 1]}})
+
+    page = make_quarry(handler).query(
+        "pubchem",
+        "substructure",
+        smiles=smiles,
+        stereo="relative",
+        match_charges=False,
+        rings_not_embedded=True,
+        limit=2,
+    )
+    assert page.records == [{"CID": 2244}, {"CID": 1}]
+    assert page.total is None and page.next_parameters is None and page.warnings
+    assert page.parameters["match_isotopes"] is True
+    assert page.provenance[0].method == "POST"
+
+
+@pytest.mark.parametrize("parameters", [{"stereo": "typo"}, {"limit": 101}, {"smarts": "C*"}])
+def test_pubchem_substructure_rejects_unsupported_options(make_quarry, parameters):
+    quarry = make_quarry(lambda _: pytest.fail("Invalid query must fail before network I/O"))
+    with pytest.raises(MolQuarryError) as error:
+        quarry.query("pubchem", "substructure", smiles="CC", **parameters)
+    assert error.value.code == "invalid_parameters"
+
+
 def test_chembl_pagination_preserves_assay_and_censored_relation(make_quarry):
     requests = []
     record = {

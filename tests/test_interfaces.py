@@ -79,6 +79,8 @@ def test_mcp_stdio_handshake_discovery_and_structured_error(tmp_path):
                 await session.initialize()
                 tools = await session.list_tools()
                 assert {t.name for t in tools.tools} == {
+                    "list_skills",
+                    "read_skill",
                     "list_sources",
                     "describe_source",
                     "query_database",
@@ -93,6 +95,20 @@ def test_mcp_stdio_handshake_discovery_and_structured_error(tmp_path):
                     "screen_compound_sourcing",
                     "export_target_inventory",
                 }
+                skills = await session.call_tool("list_skills", {})
+                assert not skills.isError and len(skills.structuredContent["skills"]) >= 6
+                skill = await session.call_tool("read_skill", {"name": "molquarry-analogue-search"})
+                assert not skill.isError and "substructure" in skill.structuredContent["content"]
+                resource = await session.call_tool(
+                    "read_skill",
+                    {"name": "molquarry-target-modulators", "path": "references/workflow.md"},
+                )
+                assert not resource.isError and resource.structuredContent["content"]
+                invalid = await session.call_tool(
+                    "read_skill", {"name": "molquarry-analogue-search", "path": "../secret"}
+                )
+                assert invalid.isError
+                assert invalid.structuredContent["error"]["code"] == "invalid_path"
                 reply = await session.call_tool("list_sources", {})
                 assert not reply.isError and len(reply.structuredContent["sources"]) == 41
                 description = await session.call_tool("describe_source", {"source": "chembl"})
